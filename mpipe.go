@@ -4,45 +4,44 @@ import (
 	"context"
 	"os"
 	"os/exec"
-
-	"github.com/charmbracelet/lipgloss"
 )
 
 type MpipeOptions func(*Mpipe)
 
-func WithStyleOut(s *lipgloss.Style) func(*Mpipe) {
+func WithStdoutTransformer(t Transformer) MpipeOptions {
 	return func(m *Mpipe) {
-		m.styleOut = s
+		m.stdoutTransformer = t
 	}
 }
 
-func WithStyleErr(s *lipgloss.Style) func(*Mpipe) {
+func WithStderrTransformer(t Transformer) MpipeOptions {
 	return func(m *Mpipe) {
-		m.styleErr = s
+		m.stderrTransformer = t
+	}
+}
+
+func WithStdinTransformer(t Transformer) MpipeOptions {
+	return func(m *Mpipe) {
+		m.stdinTransformer = t
 	}
 }
 
 type Mpipe struct {
-	cmd      *exec.Cmd
-	styleOut *lipgloss.Style
-	styleErr *lipgloss.Style
+	cmd               *exec.Cmd
+	stdoutTransformer Transformer
+	stderrTransformer Transformer
+	stdinTransformer  Transformer
 }
 
-func (m *Mpipe) StdoutTransformer() transformer {
-	if m.styleOut == nil {
-		return noTransform
+func (m *Mpipe) checkTransfromers() {
+	if m.stdoutTransformer == nil {
+		m.stdoutTransformer = NoTransform
 	}
-	return func(s string) string {
-		return m.styleOut.Render(s)
+	if m.stderrTransformer == nil {
+		m.stderrTransformer = NoTransform
 	}
-}
-
-func (m *Mpipe) StderrTransformer() transformer {
-	if m.styleErr == nil {
-		return noTransform
-	}
-	return func(s string) string {
-		return m.styleErr.Render(s)
+	if m.stdinTransformer == nil {
+		m.stdinTransformer = NoTransform
 	}
 }
 
@@ -71,9 +70,9 @@ func (m *Mpipe) Start() error {
 		return err
 	}
 
-	go transform(os.Stdout, stdout, m.StdoutTransformer())
-	go transform(os.Stderr, stderr, m.StderrTransformer())
-	go transform(stdin, os.Stdin, noTransform)
+	go transform(os.Stdout, stdout, m.stdoutTransformer)
+	go transform(os.Stderr, stderr, m.stderrTransformer)
+	go transform(stdin, os.Stdin, m.stdinTransformer)
 
 	return m.cmd.Start()
 }
@@ -83,33 +82,35 @@ func (m *Mpipe) Wait() error {
 }
 
 func Command(name string, args ...string) *Mpipe {
-	return &Mpipe{
-		cmd: exec.Command(name, args...),
-	}
+	return CommandWithOptions(nil, name, args...)
 }
 
 func CommandWithOptions(opts []MpipeOptions, name string, args ...string) *Mpipe {
-	c := Command(name, args...)
+	c := &Mpipe{
+		cmd: exec.Command(name, args...),
+	}
 	if opts != nil {
 		for i := 0; i < len(opts); i++ {
 			opts[i](c)
 		}
 	}
+	c.checkTransfromers()
 	return c
 }
 
-func CommandContext(ctx context.Context, name string, arg ...string) *Mpipe {
-	return &Mpipe{
-		cmd: exec.CommandContext(ctx, name, arg...),
-	}
+func CommandContext(ctx context.Context, name string, args ...string) *Mpipe {
+	return CommandContextWithOptions(ctx, nil, name, args...)
 }
 
 func CommandContextWithOptions(ctx context.Context, opts []MpipeOptions, name string, args ...string) *Mpipe {
-	c := CommandContext(ctx, name, args...)
+	c := &Mpipe{
+		cmd: exec.CommandContext(ctx, name, args...),
+	}
 	if opts != nil {
 		for i := 0; i < len(opts); i++ {
 			opts[i](c)
 		}
 	}
+	c.checkTransfromers()
 	return c
 }

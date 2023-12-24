@@ -7,13 +7,13 @@ import (
 	"strings"
 )
 
-type transformer func(string) string
+type Transformer func(string) string
 
-var noTransform transformer = func(s string) string {
+var NoTransform Transformer = func(s string) string {
 	return s
 }
 
-func transform(w io.Writer, r io.Reader, trasn transformer) error {
+func transform(w io.Writer, r io.Reader, trasn Transformer) error {
 	s := bufio.NewScanner(r)
 
 	for s.Scan() {
