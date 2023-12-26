@@ -1,7 +1,6 @@
 package mpipe
 
 import (
-	"context"
 	"os"
 	"os/exec"
 )
@@ -81,30 +80,9 @@ func (m *Mpipe) Wait() error {
 	return m.cmd.Wait()
 }
 
-func Command(name string, args ...string) *Mpipe {
-	return CommandWithOptions(nil, name, args...)
-}
-
-func CommandWithOptions(opts []MpipeOptions, name string, args ...string) *Mpipe {
+func CommandWithOptions(cmd *exec.Cmd, opts ...MpipeOptions) *Mpipe {
 	c := &Mpipe{
-		cmd: exec.Command(name, args...),
-	}
-	if opts != nil {
-		for i := 0; i < len(opts); i++ {
-			opts[i](c)
-		}
-	}
-	c.checkTransfromers()
-	return c
-}
-
-func CommandContext(ctx context.Context, name string, args ...string) *Mpipe {
-	return CommandContextWithOptions(ctx, nil, name, args...)
-}
-
-func CommandContextWithOptions(ctx context.Context, opts []MpipeOptions, name string, args ...string) *Mpipe {
-	c := &Mpipe{
-		cmd: exec.CommandContext(ctx, name, args...),
+		cmd: cmd,
 	}
 	if opts != nil {
 		for i := 0; i < len(opts); i++ {
