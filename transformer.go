@@ -1,39 +1,48 @@
 package mpipe
 
 import (
-	"bufio"
-	"bytes"
+	"errors"
 	"io"
-	"strings"
 )
 
-type Transformer func(string) string
+type Transformer func([]byte) []byte
 
-var NoTransform Transformer = func(s string) string {
-	return s
+var NoTransform Transformer = func(b []byte) []byte {
+	return b
 }
 
-func transform(w io.Writer, r io.Reader, trasn Transformer) error {
-	s := bufio.NewScanner(r)
+type transformerReader struct {
+	reader          io.Reader
+	transformerFunc Transformer
+}
 
-	for s.Scan() {
-		t := s.Text()
-		t = stripNewLines(t)
-		t = trasn(t)
+func (t transformerReader) applyTransformerFunc(p []byte) ([]byte, error) {
+	writted := make([]byte, 0)
+	for i := 0; i < len(p); i++ {
+		if p[i] == 0 {
+			break
+		}
+		writted = append(writted, p[i])
+	}
+	writted = t.transformerFunc(writted)
+	if len(writted) > cap(p) {
+		return nil, errors.New("mpipe: transformer function result exceeds buffer capacity")
+	}
+	copy(p, writted)
+	return p, nil
+}
 
-		_, err := io.Copy(w, bytes.NewBuffer([]byte(t)))
+func (t transformerReader) Read(p []byte) (int, error) {
+	n, err := t.reader.Read(p)
+	if err != nil {
+		return n, err
+	}
+
+	if t.transformerFunc != nil {
+		_, err := t.applyTransformerFunc(p)
 		if err != nil {
-			return err
+			return 0, err
 		}
 	}
-
-	return nil
-}
-
-func stripNewLines(s string) string {
-	var ok bool
-	if s, ok = strings.CutSuffix(s, "\n"); ok {
-		s, _ = strings.CutSuffix(s, "\r")
-	}
-	return s
+	return len(p), nil
 }

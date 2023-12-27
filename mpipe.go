@@ -1,6 +1,7 @@
 package mpipe
 
 import (
+	"io"
 	"os"
 	"os/exec"
 )
@@ -64,14 +65,19 @@ func (m *Mpipe) Start() error {
 	if err != nil {
 		return err
 	}
+	pipeStdout := transformerReader{reader: stdout, transformerFunc: m.stdoutTransformer}
+
 	stderr, err := m.cmd.StderrPipe()
 	if err != nil {
 		return err
 	}
+	pipeStderr := transformerReader{reader: stderr, transformerFunc: m.stderrTransformer}
 
-	go transform(os.Stdout, stdout, m.stdoutTransformer)
-	go transform(os.Stderr, stderr, m.stderrTransformer)
-	go transform(stdin, os.Stdin, m.stdinTransformer)
+	pipeOsStdin := transformerReader{reader: os.Stdin, transformerFunc: m.stdinTransformer}
+
+	go io.Copy(os.Stdout, pipeStdout)
+	go io.Copy(os.Stderr, pipeStderr)
+	go io.Copy(stdin, pipeOsStdin)
 
 	return m.cmd.Start()
 }
@@ -89,6 +95,7 @@ func CommandWithOptions(cmd *exec.Cmd, opts ...MpipeOptions) *Mpipe {
 			opts[i](c)
 		}
 	}
+	io.Pipe()
 	c.checkTransfromers()
 	return c
 }
