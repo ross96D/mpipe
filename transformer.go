@@ -16,20 +16,13 @@ type transformerReader struct {
 	transformerFunc Transformer
 }
 
-func (t transformerReader) applyTransformerFunc(p []byte) ([]byte, error) {
-	writted := make([]byte, 0)
-	for i := 0; i < len(p); i++ {
-		if p[i] == 0 {
-			break
-		}
-		writted = append(writted, p[i])
-	}
-	writted = t.transformerFunc(writted)
+func (t transformerReader) applyTransformerFunc(p []byte, n int) (int, error) {
+	writted := t.transformerFunc(p[:n])
 	if len(writted) > cap(p) {
-		return nil, errors.New("mpipe: transformer function result exceeds buffer capacity")
+		return 0, errors.New("mpipe: transformer function result exceeds buffer capacity")
 	}
 	copy(p, writted)
-	return p, nil
+	return len(writted), nil
 }
 
 func (t transformerReader) Read(p []byte) (int, error) {
@@ -39,10 +32,10 @@ func (t transformerReader) Read(p []byte) (int, error) {
 	}
 
 	if t.transformerFunc != nil {
-		_, err := t.applyTransformerFunc(p)
+		n, err = t.applyTransformerFunc(p, n)
 		if err != nil {
 			return 0, err
 		}
 	}
-	return len(p), nil
+	return n, nil
 }
