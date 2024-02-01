@@ -12,5 +12,10 @@ func TestMpipe(t *testing.T) {
 	}), WithStdoutTransformer(func(s []byte) []byte {
 		return append([]byte("prefout: "), s...)
 	}))
-	command.Run()
+
+	err := command.Run()
+	if err != nil {
+		t.Error(err)
+	}
+
 }

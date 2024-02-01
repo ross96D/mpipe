@@ -71,27 +71,27 @@ func (m *Mpipe) Start() error {
 	if err != nil {
 		return err
 	}
-	c, err := cancelreader.NewReader(stdout)
+	cout, err := cancelreader.NewReader(stdout)
 	if err != nil {
 		return err
 	}
-	m.readerOut = transformerReader{cancelable: c, transformerFunc: m.stdoutTransformer}
+	m.readerOut = transformerReader{cancelable: cout, transformerFunc: m.stdoutTransformer}
 
 	stderr, err := m.cmd.StderrPipe()
 	if err != nil {
 		return err
 	}
-	c, err = cancelreader.NewReader(stderr)
+	cerr, err := cancelreader.NewReader(stderr)
 	if err != nil {
 		return err
 	}
-	m.readerErr = transformerReader{cancelable: c, transformerFunc: m.stderrTransformer}
+	m.readerErr = transformerReader{cancelable: cerr, transformerFunc: m.stderrTransformer}
 
-	c, err = cancelreader.NewReader(os.Stdin)
+	cin, err := cancelreader.NewReader(os.Stdin)
 	if err != nil {
 		return err
 	}
-	m.readerIn = transformerReader{cancelable: c, transformerFunc: m.stdinTransformer}
+	m.readerIn = transformerReader{cancelable: cin, transformerFunc: m.stdinTransformer}
 
 	go io.Copy(os.Stdout, m.readerOut)
 	go io.Copy(os.Stderr, m.readerErr)
