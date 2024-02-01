@@ -2,7 +2,8 @@ package mpipe
 
 import (
 	"errors"
-	"io"
+
+	"github.com/ross96D/cancelreader"
 )
 
 type Transformer func([]byte) []byte
@@ -12,8 +13,13 @@ var NoTransform Transformer = func(b []byte) []byte {
 }
 
 type transformerReader struct {
-	reader          io.Reader
+	// reader          io.Reader
+	cancelable      cancelreader.CancelReader
 	transformerFunc Transformer
+}
+
+func (t transformerReader) cancel() bool {
+	return t.cancelable.Cancel()
 }
 
 func (t transformerReader) applyTransformerFunc(p []byte, n int) (int, error) {
@@ -26,7 +32,7 @@ func (t transformerReader) applyTransformerFunc(p []byte, n int) (int, error) {
 }
 
 func (t transformerReader) Read(p []byte) (int, error) {
-	n, err := t.reader.Read(p)
+	n, err := t.cancelable.Read(p)
 	if err != nil {
 		return n, err
 	}

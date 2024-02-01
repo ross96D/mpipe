@@ -4,6 +4,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
+
+	"github.com/ross96D/cancelreader"
 )
 
 type MpipeOptions func(*Mpipe)
@@ -31,6 +33,10 @@ type Mpipe struct {
 	stdoutTransformer Transformer
 	stderrTransformer Transformer
 	stdinTransformer  Transformer
+
+	readerOut transformerReader
+	readerIn  transformerReader
+	readerErr transformerReader
 }
 
 func (m *Mpipe) checkTransfromers() {
@@ -65,25 +71,45 @@ func (m *Mpipe) Start() error {
 	if err != nil {
 		return err
 	}
-	pipeStdout := transformerReader{reader: stdout, transformerFunc: m.stdoutTransformer}
+	c, err := cancelreader.NewReader(stdout)
+	if err != nil {
+		return err
+	}
+	m.readerOut = transformerReader{cancelable: c, transformerFunc: m.stdoutTransformer}
 
 	stderr, err := m.cmd.StderrPipe()
 	if err != nil {
 		return err
 	}
-	pipeStderr := transformerReader{reader: stderr, transformerFunc: m.stderrTransformer}
+	c, err = cancelreader.NewReader(stderr)
+	if err != nil {
+		return err
+	}
+	m.readerErr = transformerReader{cancelable: c, transformerFunc: m.stderrTransformer}
 
-	pipeOsStdin := transformerReader{reader: os.Stdin, transformerFunc: m.stdinTransformer}
+	c, err = cancelreader.NewReader(os.Stdin)
+	if err != nil {
+		return err
+	}
+	m.readerIn = transformerReader{cancelable: c, transformerFunc: m.stdinTransformer}
 
-	go io.Copy(os.Stdout, pipeStdout)
-	go io.Copy(os.Stderr, pipeStderr)
-	go io.Copy(stdin, pipeOsStdin)
+	go io.Copy(os.Stdout, m.readerOut)
+	go io.Copy(os.Stderr, m.readerErr)
+	go io.Copy(stdin, m.readerIn)
 
 	return m.cmd.Start()
 }
 
 func (m *Mpipe) Wait() error {
+	defer m.Cancel()
 	return m.cmd.Wait()
+}
+
+func (m *Mpipe) Cancel() bool {
+	er := m.readerErr.cancel()
+	out := m.readerOut.cancel()
+	in := m.readerIn.cancel()
+	return er && out && in
 }
 
 func CommandWithOptions(cmd *exec.Cmd, opts ...MpipeOptions) *Mpipe {
