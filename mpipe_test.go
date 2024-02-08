@@ -6,7 +6,7 @@ import (
 )
 
 func TestMpipe(t *testing.T) {
-	cmd := exec.Command("mpgcli")
+	cmd := exec.Command("psql", "-U", "postgres")
 	command := CommandWithOptions(cmd, WithStderrTransformer(func(s []byte) []byte {
 		return append([]byte("preferr: "), s...)
 	}), WithStdoutTransformer(func(s []byte) []byte {
