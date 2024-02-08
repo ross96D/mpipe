@@ -4,8 +4,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-
-	"github.com/ross96D/cancelreader"
 )
 
 type MpipeOptions func(*Mpipe)
@@ -71,27 +69,22 @@ func (m *Mpipe) Start() error {
 	if err != nil {
 		return err
 	}
-	cout, err := cancelreader.NewReader(stdout)
-	if err != nil {
-		return err
-	}
-	m.readerOut = transformerReader{cancelable: cout, transformerFunc: m.stdoutTransformer}
-
 	stderr, err := m.cmd.StderrPipe()
 	if err != nil {
 		return err
 	}
-	cerr, err := cancelreader.NewReader(stderr)
-	if err != nil {
-		return err
-	}
-	m.readerErr = transformerReader{cancelable: cerr, transformerFunc: m.stderrTransformer}
 
-	cin, err := cancelreader.NewReader(os.Stdin)
-	if err != nil {
+	if m.readerOut, err = newTransformerReader(stdout, m.stdoutTransformer); err != nil {
 		return err
 	}
-	m.readerIn = transformerReader{cancelable: cin, transformerFunc: m.stdinTransformer}
+
+	if m.readerErr, err = newTransformerReader(stderr, m.stderrTransformer); err != nil {
+		return err
+	}
+
+	if m.readerIn, err = newTransformerReader(os.Stdin, m.stdinTransformer); err != nil {
+		return err
+	}
 
 	go io.Copy(os.Stdout, m.readerOut)
 	go io.Copy(os.Stderr, m.readerErr)
