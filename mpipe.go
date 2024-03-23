@@ -27,6 +27,12 @@ func WithStdinTransformer(t Transformer) MpipeOptions {
 	}
 }
 
+func WithTimeOut(timeout time.Duration) MpipeOptions {
+	return func(m *Mpipe) {
+		m.timeout = timeout
+	}
+}
+
 type Mpipe struct {
 	cmd               *exec.Cmd
 	stdoutTransformer Transformer
@@ -37,9 +43,10 @@ type Mpipe struct {
 	readerIn  transformerReader
 	readerErr transformerReader
 
-	stdout chan struct{}
-	stderr chan struct{}
-	stdin  chan struct{}
+	stdout  chan struct{}
+	stderr  chan struct{}
+	stdin   chan struct{}
+	timeout time.Duration
 }
 
 func (m *Mpipe) checkTransfromers() {
@@ -110,7 +117,7 @@ func (m *Mpipe) Start() error {
 func (m *Mpipe) Wait() error {
 	defer m.Cancel()
 	err := m.cmd.Wait()
-	tout := time.NewTimer(500 * time.Millisecond)
+	tout := time.NewTimer(m.timeout)
 	count := 3
 	for {
 		if count == 0 {
@@ -141,7 +148,8 @@ func (m *Mpipe) Cancel() bool {
 
 func CommandWithOptions(cmd *exec.Cmd, opts ...MpipeOptions) *Mpipe {
 	c := &Mpipe{
-		cmd: cmd,
+		cmd:     cmd,
+		timeout: 20 * time.Millisecond,
 	}
 	if opts != nil {
 		for i := 0; i < len(opts); i++ {
