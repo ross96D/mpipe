@@ -148,7 +148,6 @@ func CommandWithOptions(cmd *exec.Cmd, opts ...MpipeOptions) *Mpipe {
 			opts[i](c)
 		}
 	}
-	io.Pipe()
 	c.checkTransfromers()
 	return c
 }
