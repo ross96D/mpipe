@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"time"
 )
 
 type MpipeOptions func(*Mpipe)
@@ -35,6 +36,10 @@ type Mpipe struct {
 	readerOut transformerReader
 	readerIn  transformerReader
 	readerErr transformerReader
+
+	stdout chan struct{}
+	stderr chan struct{}
+	stdin  chan struct{}
 }
 
 func (m *Mpipe) checkTransfromers() {
@@ -86,16 +91,45 @@ func (m *Mpipe) Start() error {
 		return err
 	}
 
-	go io.Copy(os.Stdout, m.readerOut)
-	go io.Copy(os.Stderr, m.readerErr)
-	go io.Copy(stdin, m.readerIn)
+	go func() {
+		io.Copy(os.Stdout, m.readerOut)
+		<-m.stdout
+	}()
+	go func() {
+		io.Copy(os.Stderr, m.readerErr)
+		<-m.stderr
+	}()
+	go func() {
+		io.Copy(stdin, m.readerIn)
+		<-m.stdin
+	}()
 
 	return m.cmd.Start()
 }
 
 func (m *Mpipe) Wait() error {
 	defer m.Cancel()
-	return m.cmd.Wait()
+	err := m.cmd.Wait()
+	tout := time.NewTimer(500 * time.Millisecond)
+	count := 3
+	for {
+		if count == 0 {
+			return err
+		}
+		select {
+		case <-tout.C:
+			return err
+
+		case <-m.stderr:
+			count--
+
+		case <-m.stdout:
+			count--
+
+		case <-m.stdin:
+			count--
+		}
+	}
 }
 
 func (m *Mpipe) Cancel() bool {
