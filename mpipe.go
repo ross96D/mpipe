@@ -9,6 +9,12 @@ import (
 
 type MpipeOptions func(*Mpipe)
 
+func WithStdin(r io.Reader) MpipeOptions {
+	return func(m *Mpipe) {
+		m.stdin = r
+	}
+}
+
 func WithStdoutTransformer(t Transformer) MpipeOptions {
 	return func(m *Mpipe) {
 		m.stdoutTransformer = t
@@ -18,12 +24,6 @@ func WithStdoutTransformer(t Transformer) MpipeOptions {
 func WithStderrTransformer(t Transformer) MpipeOptions {
 	return func(m *Mpipe) {
 		m.stderrTransformer = t
-	}
-}
-
-func WithStdinTransformer(t Transformer) MpipeOptions {
-	return func(m *Mpipe) {
-		m.stdinTransformer = t
 	}
 }
 
@@ -37,28 +37,15 @@ type Mpipe struct {
 	cmd               *exec.Cmd
 	stdoutTransformer Transformer
 	stderrTransformer Transformer
-	stdinTransformer  Transformer
+
+	stdin io.Reader
 
 	readerOut transformerReader
-	readerIn  transformerReader
 	readerErr transformerReader
 
-	stdout  chan struct{}
-	stderr  chan struct{}
-	stdin   chan struct{}
-	timeout time.Duration
-}
-
-func (m *Mpipe) checkTransfromers() {
-	if m.stdoutTransformer == nil {
-		m.stdoutTransformer = NoTransform
-	}
-	if m.stderrTransformer == nil {
-		m.stderrTransformer = NoTransform
-	}
-	if m.stdinTransformer == nil {
-		m.stdinTransformer = NoTransform
-	}
+	stdoutCh chan struct{}
+	stderrCh chan struct{}
+	timeout  time.Duration
 }
 
 func (m *Mpipe) String() string {
@@ -72,11 +59,15 @@ func (m *Mpipe) Run() error {
 	return m.Wait()
 }
 
-func (m *Mpipe) Start() error {
-	stdin, err := m.cmd.StdinPipe()
-	if err != nil {
-		return err
+func (m *Mpipe) Start() (err error) {
+	var thereader io.Reader
+	if m.stdin != nil {
+		thereader = m.stdin
+	} else {
+		thereader = os.Stdin
 	}
+	m.cmd.Stdin = thereader
+
 	stdout, err := m.cmd.StdoutPipe()
 	if err != nil {
 		return err
@@ -94,21 +85,13 @@ func (m *Mpipe) Start() error {
 		return err
 	}
 
-	if m.readerIn, err = newTransformerReader(os.Stdin, m.stdinTransformer); err != nil {
-		return err
-	}
-
 	go func() {
 		io.Copy(os.Stdout, m.readerOut)
-		<-m.stdout
+		m.stdoutCh <- struct{}{}
 	}()
 	go func() {
 		io.Copy(os.Stderr, m.readerErr)
-		<-m.stderr
-	}()
-	go func() {
-		io.Copy(stdin, m.readerIn)
-		<-m.stdin
+		m.stderrCh <- struct{}{}
 	}()
 
 	return m.cmd.Start()
@@ -118,7 +101,7 @@ func (m *Mpipe) Wait() error {
 	defer m.Cancel()
 	err := m.cmd.Wait()
 	tout := time.NewTimer(m.timeout)
-	count := 3
+	count := 2
 	for {
 		if count == 0 {
 			return err
@@ -127,13 +110,10 @@ func (m *Mpipe) Wait() error {
 		case <-tout.C:
 			return err
 
-		case <-m.stderr:
+		case <-m.stderrCh:
 			count--
 
-		case <-m.stdout:
-			count--
-
-		case <-m.stdin:
+		case <-m.stdoutCh:
 			count--
 		}
 	}
@@ -142,14 +122,15 @@ func (m *Mpipe) Wait() error {
 func (m *Mpipe) Cancel() bool {
 	er := m.readerErr.cancel()
 	out := m.readerOut.cancel()
-	in := m.readerIn.cancel()
-	return er && out && in
+	return er && out
 }
 
 func CommandWithOptions(cmd *exec.Cmd, opts ...MpipeOptions) *Mpipe {
 	c := &Mpipe{
-		cmd:     cmd,
-		timeout: 20 * time.Millisecond,
+		cmd:      cmd,
+		timeout:  20 * time.Millisecond,
+		stdoutCh: make(chan struct{}),
+		stderrCh: make(chan struct{}),
 	}
 	if opts != nil {
 		for i := 0; i < len(opts); i++ {
@@ -158,4 +139,13 @@ func CommandWithOptions(cmd *exec.Cmd, opts ...MpipeOptions) *Mpipe {
 	}
 	c.checkTransfromers()
 	return c
+}
+
+func (m *Mpipe) checkTransfromers() {
+	if m.stdoutTransformer == nil {
+		m.stdoutTransformer = NoTransform
+	}
+	if m.stderrTransformer == nil {
+		m.stderrTransformer = NoTransform
+	}
 }

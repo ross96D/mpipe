@@ -1,5 +1,7 @@
 package mpipe
 
+import "io"
+
 type Transformer func([]byte) []byte
 
 var NoTransform Transformer = func(b []byte) []byte {
@@ -25,4 +27,20 @@ func (t transformerReader) Read(p []byte) (int, error) {
 		}
 	}
 	return n, nil
+}
+
+type NoCancel struct {
+	reader io.Reader
+}
+
+func (nc NoCancel) Read(p []byte) (n int, err error) {
+	return nc.reader.Read(p)
+}
+
+func (NoCancel) Close() error { return nil }
+
+func (NoCancel) Cancel() bool { return true }
+
+func newTransformerReaderWithoutCancel(reader io.Reader, f Transformer) (transformerReader, error) {
+	return transformerReader{reader: NoCancel{reader: reader}, transformerFunc: f}, nil
 }
